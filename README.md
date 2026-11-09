@@ -5,9 +5,7 @@
 ## 構成
 
 - **skill/** — 占いPDFのデザインと生成手順（SKILL.md）
-- **output/** — 出力サンプル（fortune-2026-10-31-big.pdf）
-
-マスターは Claude の VM 側にあり、変更はこのリポジトリへプッシュされます。Mac 側は pull で受け取ります。
+- **output/** — 生成された占いPDFの置き場
 
 ## SKILL.md の正本と同期
 
