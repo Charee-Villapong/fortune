@@ -8,6 +8,11 @@ token-table row) so ambiguous bare values cannot false-match.
 Target: the canonical SKILL.md by default, or the file given as the
 single argument.
 
+A value only counts as present when it is not immediately followed
+by a character that would extend it (a digit, a letter, or a dot),
+so a trailed-off edit such as ``16px`` -> ``16px0`` is reported
+missing instead of passing as a bare substring.
+
 Exit codes:
     0: every expected value exists
     1: at least one expected value is missing
@@ -20,6 +25,7 @@ Usage:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -101,6 +107,17 @@ EXPECTED: list[tuple[str, str]] = [
 ]
 
 
+# Characters that would extend a value if they directly followed it.
+# Delimiters (spaces, pipes, backticks), punctuation, and Japanese
+# sentence continuations after a value still count as a match.
+_VALUE_CONTINUATION = r"[0-9A-Za-z.]"
+
+
+def contains_value(text: str, expected: str) -> bool:
+    pattern = re.escape(expected) + "(?!" + _VALUE_CONTINUATION + ")"
+    return re.search(pattern, text) is not None
+
+
 def default_target_path() -> Path:
     return (
         Path.home()
@@ -124,7 +141,7 @@ def check(path: Path) -> int:
     print(f"target: {path}")
     missing = 0
     for label, expected in EXPECTED:
-        if expected in text:
+        if contains_value(text, expected):
             print(f"OK {label}: {expected}")
         else:
             print(f"MISSING {label}: {expected}")
