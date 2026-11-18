@@ -83,7 +83,16 @@ def combined(result: subprocess.CompletedProcess[str]) -> str:
 
 
 def lines_for_label(output: str, label: str) -> list[str]:
-    return [line for line in output.splitlines() if label in line]
+    # Match the result-line prefix exactly ("OK <label>:" /
+    # "MISSING <label>:"). A plain substring match also picks up
+    # lines of other checks whose expected text merely mentions the
+    # label (e.g. the slabel-bar value text contains `accent`), and
+    # labels that are suffixes of longer labels (accent in
+    # slabel-bar) collide the same way.
+    prefixes = (f"OK {label}:", f"MISSING {label}:")
+    return [
+        line for line in output.splitlines() if line.startswith(prefixes)
+    ]
 
 
 def is_missing_line(line: str) -> bool:
@@ -191,6 +200,20 @@ MUTATIONS = [
         "`qn-size` | 17px",
         id="size-qn-size",
     ),
+    # trailing edits: the old value stays a substring of the new one,
+    # so only a boundary-aware match can catch these
+    pytest.param(
+        "qn-size",
+        "`qn-size` | 16px",
+        "`qn-size` | 16px0",
+        id="size-qn-size-trailing-digit",
+    ),
+    pytest.param(
+        "bg",
+        "`bg` | #F5F7FA",
+        "`bg` | #F5F7FAA",
+        id="colour-bg-trailing-digit",
+    ),
     # string items
     pytest.param(
         "middle-items",
@@ -222,6 +245,58 @@ def test_mutated_value_returns_one_and_identifies_check(
     output = combined(result)
     assert_check_missing(output, label)
     # An unrelated check is unaffected by the single-value change.
+    assert_check_present(output, "accent")
+
+
+# --- (c2) labels that collide as substrings ---------------------------
+#
+# The label "accent" is a suffix of "slabel-bar", and the slabel-bar
+# expected text itself mentions `accent`. Result lines must be
+# attributed by their exact "OK <label>:" / "MISSING <label>:" prefix,
+# never by a substring match.
+
+SLABEL_BAR_VALUE = (
+    "`slabel-bar` | 6px | `.slabel` 左の縦バー幅"
+    "（色は `accent`、padding-left 9px）"
+)
+
+
+def test_lines_for_label_matches_the_exact_label_only() -> None:
+    output = (
+        "target: /tmp/SKILL.md\n"
+        "OK accent: `accent` | #FF7A1A\n"
+        f"MISSING slabel-bar: {SLABEL_BAR_VALUE}\n"
+        "summary: total 55 checks, 54 ok, 1 missing\n"
+    )
+
+    assert lines_for_label(output, "accent") == [
+        "OK accent: `accent` | #FF7A1A"
+    ]
+    assert lines_for_label(output, "slabel-bar") == [
+        f"MISSING slabel-bar: {SLABEL_BAR_VALUE}"
+    ]
+
+
+def test_mutated_slabel_bar_does_not_confuse_accent(
+    tmp_path: Path,
+) -> None:
+    text = CANONICAL.read_text(encoding="utf-8")
+    assert text.count(SLABEL_BAR_VALUE) == 1
+    mutated = tmp_path / "SKILL.md"
+    mutated.write_text(
+        text.replace(
+            SLABEL_BAR_VALUE,
+            SLABEL_BAR_VALUE.replace("6px", "7px", 1),
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_check(mutated)
+
+    assert result.returncode == 1
+    output = combined(result)
+    assert_check_missing(output, "slabel-bar")
     assert_check_present(output, "accent")
 
 
